@@ -10,6 +10,7 @@ class Slice:
     def __init__(self, map_array, curve):
         self._map_seq = sunpy.map.Map(map_array, sequence=True)
         self._map_seq.all_maps_same_shape()
+        # Sort sequence by time
 
         self._curve_coords = []
         self._intensity_coords = []

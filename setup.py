@@ -5,7 +5,7 @@ DESCRIPTION = 'Space–time slice plotting package for Python'
 LONG_DESCRIPTION = 'Space–time slice plotting package for Python'
 
 setup(
-    name="tslicepy",
+    name="sunslicepy",
     version=VERSION,
     author="Trestan Simon",
     author_email="trestansimon@gmail.com",
