@@ -5,6 +5,9 @@ class AbstractCurve(ABC):
     def __init__(self):
         pass
 
+    def length(self):
+        pass
+
 
 class Line(AbstractCurve):
     pass
