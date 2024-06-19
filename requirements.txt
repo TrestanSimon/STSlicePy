@@ -1,4 +1,5 @@
 setuptools~=67.8.0
 matplotlib~=3.7.2
-astropy~=5.3.1
+astropy~=5.3.3
 sunpy~=5.0.0
+numpy~=1.25.2
