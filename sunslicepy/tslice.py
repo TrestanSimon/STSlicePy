@@ -2,7 +2,7 @@ import datetime
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from sunpy.coordinates import HeliographicCarrington, Helioprojective
+from sunpy.coordinates import Helioprojective
 from sunpy.map import MapSequence
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -11,82 +11,55 @@ from tqdm import tqdm
 class Slice:
     def __init__(
             self,
-            seq: MapSequence,
-            curve: list or np.ndarray,
+            seq_input: MapSequence,
+            curve_input: list or np.ndarray,
     ):
-        self.map_sequence = seq
+        self.map_sequence = seq_input
         self.map_sequence.all_maps_same_shape()
 
-        frame_n = len(self.map_sequence)
-        curve_n = len(curve)
+        self.frame_n = len(self.map_sequence)
+        self.curve_n = len(curve_input)
 
         self.spatial_units = self.map_sequence[0].spatial_units
         self.colormap = self.map_sequence[0].cmap
 
-        self.time = np.empty(frame_n, dtype=datetime.datetime)
-        self.intensity = np.zeros((frame_n, curve_n), dtype=float)
-        self.curve_axis = np.empty(curve_n, dtype=u.Quantity)
+        self.time = [smap.date.datetime for smap in self.map_sequence]
+        self.intensity = np.zeros((self.frame_n, self.curve_n), dtype=float)
+        self.curve_axis = np.empty(self.curve_n, dtype=u.Quantity)
 
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
 
-        curve_p = np.empty(curve_n, dtype=SkyCoord)
-        curve_c = np.empty(curve_n, dtype=SkyCoord)
-        curve_c_comp = np.empty((curve_n, 2), dtype=u.Quantity)
+        coords = curve_input.T
 
-        for i in tqdm(range(curve_n)):
-            # Helioprojective skycoords at t = 0
-            curve_p[i] = SkyCoord(
-                curve[i][0], curve[i][1],
-                frame=Helioprojective(obstime=self.map_sequence[0].date, observer='earth')
-            )
-            # Transform to Carrington coordinates:
-            # Carrington skycoords at t = 0
-            curve_c[i] = curve_p[i].transform_to(
-                HeliographicCarrington(obstime=self.map_sequence[0].date, observer='earth')
-            )
-            # Extract Carrington lon and lat
-            curve_c_comp[i][0] = curve_c[i].lon
-            curve_c_comp[i][1] = curve_c[i].lat
+        curve_p = SkyCoord(
+            coords[0], coords[1],
+            frame=Helioprojective(obstime=self.map_sequence[0].date, observer='earth')
+        )
 
-        curve_skycoord = np.empty((frame_n, curve_n), dtype=SkyCoord)
-        curve_indices_raw = np.empty((curve_n, 2), dtype=u.Quantity)
-        curve_indices = np.empty((frame_n, curve_n, 2), dtype=int)
+        curve_i_raw = np.empty(2, dtype=u.Quantity)
+        curve_i = np.empty((self.frame_n, self.curve_n, 2), dtype=int)
 
-        # Helioprojective skycoords corresponding to extracted Carrington lon and lat for all t
-        for i in tqdm(range(curve_n)):
-            for j in range(frame_n):
-                curve_skycoord[j][i] = SkyCoord(
-                    curve_c_comp[i][0], curve_c_comp[i][1],
-                    frame=HeliographicCarrington(obstime=self.map_sequence[j].date, observer='earth')
+        with (Helioprojective.assume_spherical_screen(
+                center=curve_p[0].observer,
+                only_off_disk=True
+        )):
+            for j in tqdm(range(self.frame_n)):
+                curve_i_raw[0], curve_i_raw[1] = self.map_sequence[j].world_to_pixel(
+                    curve_p
                 )
+                curve_i_raw = [np.abs(row.value) for row in curve_i_raw]
+                for i in range(self.curve_n):
+                    curve_i[j][i][1] = curve_i_raw[0][i]
+                    curve_i[j][i][0] = curve_i_raw[1][i]
 
-        # World to pixel
-        for i in tqdm(range(curve_n)):
-            for j in range(frame_n):
-                curve_indices_raw[i][0], curve_indices_raw[i][1] = self.map_sequence[j].world_to_pixel(
-                    curve_skycoord[j][i]
-                    # curve_p[i]
-                )
-                curve_indices[j][i][1] = np.abs(curve_indices_raw[i][0].value)
-                curve_indices[j][i][0] = np.abs(curve_indices_raw[i][1].value)
+            self.curve_axis[0] = 0 * u.arcsec
+            for i in range(self.curve_n-1):
+                self.curve_axis[i+1] = self.curve_axis[i] + curve_p[i+1].separation(curve_p[i])
 
-        # Calculate helioprojective increments
-        self.curve_axis[0] = 0 * u.arcsec
-        for i in range(curve_n - 1):
-            self.curve_axis[i+1] = self.curve_axis[i] + curve_skycoord[0][i+1].separation(curve_skycoord[0][i])
-
-        for j in range(0, frame_n):
-            self.time[j] = self.map_sequence[j].date.datetime
-            for i in range(curve_n):
-                x0 = int(np.floor(curve_indices[j][i][0]))
-                y0 = int(np.floor(curve_indices[j][i][1]))
-                """
-                x1 = int(np.ceil(curve_indices[j][i][0]))
-                y1 = int(np.ceil(curve_indices[j][i][1]))
-                dx = curve_indices[j][i][0] - x0
-                dy = curve_indices[j][i][1] - y0
-                ds = np.sqrt(dx**2 + dy**2)"""
-
+        for j in range(self.frame_n):
+            for i in range(self.curve_n):
+                x0 = int(np.floor(curve_i[j][i][0]))
+                y0 = int(np.floor(curve_i[j][i][1]))
                 self.intensity[j][i] = intensity_cube[j][x0][y0]
 
         self.intensity = self.intensity.T
