@@ -12,13 +12,13 @@ class GenericSlice(ABC):
     def __init__(
             self,
             seq_input: MapSequence,
-            skycoords_input: list or np.ndarray,
+            skycoords_input: list[SkyCoord] or np.ndarray[SkyCoord],
     ):
         self.map_sequence = seq_input
         self.map_sequence.all_maps_same_shape()
         self.frame_n = len(self.map_sequence)
         self.time = [smap.date.datetime for smap in self.map_sequence]
-        
+
         self.spatial_units = self.map_sequence[0].spatial_units
         self.colormap = self.map_sequence[0].cmap
 
@@ -55,7 +55,7 @@ class GenericSlice(ABC):
         return difference
 
 
-class NaiveSlice(GenericSlice):
+class PointsSlice(GenericSlice):
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         curve_len = len(curve_skycoords)
@@ -64,7 +64,7 @@ class NaiveSlice(GenericSlice):
 
         for f in tqdm(range(self.frame_n), unit='frames'):
             xf, yf = self.map_sequence[f].world_to_pixel(curve_skycoords)
-            xf, yf = np.floor(xf), np.floor(yf)
+            xf, yf = np.round(xf), np.round(yf)
             for i in range(curve_len):
                 xi, yi = int(xf[i].value), int(yf[i].value)
                 curve_px[f][i] = yi, xi
@@ -92,11 +92,9 @@ class BreSlice(GenericSlice):
             xp, yp = self.map_sequence[f].world_to_pixel(curve_skycoords)
             coords = np.abs(np.array([
                 [int(xi.value) for xi in xp],
-                [int(yi.value) for yi in yp],
-            ]).T)
+                [int(yi.value) for yi in yp]]).T)
             for i in range(coords_n):
-                coords[i] = (int(np.round(coords[i][0])),
-                             int(np.round(coords[i][1])))
+                coords[i] = int(np.round(coords[i][0])), int(np.round(coords[i][1]))
 
             x0, y0 = coords[0]
             x1, y1 = coords[1]
@@ -104,7 +102,7 @@ class BreSlice(GenericSlice):
             dy = abs(y1 - y0)
 
             reciprocal = False
-            if dy / float(dx) > 1:
+            if dy > dx:
                 reciprocal = True
                 dx, dy = dy, dx
                 x0, y0 = y0, x0
@@ -121,13 +119,10 @@ class BreSlice(GenericSlice):
                 else:
                     D += 2*dy
                 xi += 1 if xi < x1 else -1
-
-                y[i] = yi
-                x[i] = xi
+                x[i], y[i] = xi, yi
 
             if reciprocal:
                 x, y = y, x
-
             if curve_px is None:
                 curve_px = np.empty((self.frame_n, dx, 2), dtype=int)
             if intensity is None:
@@ -136,8 +131,6 @@ class BreSlice(GenericSlice):
             for i in range(dx):
                 curve_px[f][i] = y[i], x[i]
                 intensity[f][i] = intensity_cube[f][y[i]][x[i]]
-
-            self.curve_ds = np.arange(0, dx + 1, 1) * u.arcsec
         return curve_px, intensity
 
     def _get_curve_ds(self, curve_skycoords):
