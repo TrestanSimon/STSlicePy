@@ -24,49 +24,48 @@ class Slice:
         self.colormap = self.map_sequence[0].cmap
 
         self.time = [smap.date.datetime for smap in self.map_sequence]
+        self.curve_px = np.empty((self.frame_n, self.curve_n, 2), dtype=float)
+        self.curve_ds = np.empty(self.curve_n, dtype=u.Quantity)
         self.intensity = np.zeros((self.frame_n, self.curve_n), dtype=float)
-        self.curve_axis = np.empty(self.curve_n, dtype=u.Quantity)
 
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
 
-        coords = curve_input.T
-
-        curve_p = SkyCoord(
-            coords[0], coords[1],
+        curve_components = curve_input.T
+        curve_skycoords = SkyCoord(
+            curve_components[0], curve_components[1],
             frame=Helioprojective(obstime=self.map_sequence[0].date, observer='earth')
         )
 
-        curve_i_raw = np.empty(2, dtype=u.Quantity)
-        curve_i = np.empty((self.frame_n, self.curve_n, 2), dtype=int)
-
+        # Necessary when points are not on disk
         with (Helioprojective.assume_spherical_screen(
-                center=curve_p[0].observer,
+                center=curve_skycoords[0].observer,
                 only_off_disk=True
         )):
-            for j in tqdm(range(self.frame_n)):
-                curve_i_raw[0], curve_i_raw[1] = self.map_sequence[j].world_to_pixel(
-                    curve_p
-                )
-                curve_i_raw = [np.abs(row.value) for row in curve_i_raw]
+            # World to pixel by frame
+            for f in tqdm(range(self.frame_n), unit='frames'):
+                x_p, y_p = self.map_sequence[f].world_to_pixel(curve_skycoords)
+                coords = np.abs(np.array([x_p.value, y_p.value]).T)
                 for i in range(self.curve_n):
-                    curve_i[j][i][1] = curve_i_raw[0][i]
-                    curve_i[j][i][0] = curve_i_raw[1][i]
+                    self.curve_px[f][i][1], self.curve_px[f][i][0] = coords[i]
 
-            self.curve_axis[0] = 0 * u.arcsec
+            # Calculate distances along curve
+            self.curve_ds[0] = 0 * u.arcsec
             for i in range(self.curve_n-1):
-                self.curve_axis[i+1] = self.curve_axis[i] + curve_p[i+1].separation(curve_p[i])
+                self.curve_ds[i+1] = self.curve_ds[i] + curve_skycoords[i+1].separation(curve_skycoords[i])
 
-        for j in range(self.frame_n):
-            for i in range(self.curve_n):
-                x0 = int(np.floor(curve_i[j][i][0]))
-                y0 = int(np.floor(curve_i[j][i][1]))
-                self.intensity[j][i] = intensity_cube[j][x0][y0]
-
+        self._line_draw(intensity_cube)
         self.intensity = self.intensity.T
+
+    def _line_draw(self, data_cube):
+        for f in range(self.frame_n):
+            for i in range(self.curve_n):
+                x_i = int(np.floor(self.curve_px[f][i][0]))
+                y_i = int(np.floor(self.curve_px[f][i][1]))
+                self.intensity[f][i] = data_cube[f][x_i][y_i]
 
     def peek(self, norm='log'):
         plt.pcolormesh(
-            self.time, [ds.value for ds in self.curve_axis], self.intensity,
+            self.time, [ds.value for ds in self.curve_ds], self.intensity,
             cmap=self.colormap, norm=norm
         )
         plt.show()
