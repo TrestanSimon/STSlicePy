@@ -103,7 +103,9 @@ class BreSlice(GenericSlice):
             dx = abs(x1 - x0)
             dy = abs(y1 - y0)
 
+            reciprocal = False
             if dy / float(dx) > 1:
+                reciprocal = True
                 dx, dy = dy, dx
                 x0, y0 = y0, x0
                 x1, y1 = y1, x1
@@ -122,6 +124,9 @@ class BreSlice(GenericSlice):
 
                 y[i] = yi
                 x[i] = xi
+
+            if reciprocal:
+                x, y = y, x
 
             if curve_px is None:
                 curve_px = np.empty((self.frame_n, dx, 2), dtype=int)
