@@ -82,6 +82,7 @@ class PointsSlice(GenericSlice):
 
 
 class BreSlice(GenericSlice):
+    """Slice using Bresenham's line algorithm"""
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
@@ -109,8 +110,8 @@ class BreSlice(GenericSlice):
                 x1, y1 = y1, x1
 
             D = 2*dy - dx
-            x = np.empty(dx, dtype=int)
-            y = np.empty(dx, dtype=int)
+            x = np.empty(dx + 1, dtype=int)
+            y = np.empty(dx + 1, dtype=int)
             xi, yi = x0, y0
             for i in range(dx):
                 if D > 0:
@@ -121,14 +122,17 @@ class BreSlice(GenericSlice):
                 xi += 1 if xi < x1 else -1
                 x[i], y[i] = xi, yi
 
+            x[-1] = x1
+            y[-1] = y1
+
             if reciprocal:
                 x, y = y, x
             if curve_px is None:
-                curve_px = np.empty((self.frame_n, dx, 2), dtype=int)
+                curve_px = np.empty((self.frame_n, dx + 1, 2), dtype=int)
             if intensity is None:
-                intensity = np.empty((self.frame_n, dx), dtype=float)
+                intensity = np.empty((self.frame_n, dx + 1), dtype=float)
 
-            for i in range(dx):
+            for i in range(dx + 1):
                 curve_px[f][i] = y[i], x[i]
                 intensity[f][i] = intensity_cube[f][y[i]][x[i]]
         return curve_px, intensity
