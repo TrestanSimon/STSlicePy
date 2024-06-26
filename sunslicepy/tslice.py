@@ -40,6 +40,35 @@ class GenericSlice(ABC):
     def _get_curve_ds(self, curve_skycoords) -> np.ndarray[u.Quantity]:
         """"""
 
+    @staticmethod
+    def running_difference(xt_arr):
+        t_len = len(xt_arr)
+        x_len = len(xt_arr[0])
+        difference = np.empty((t_len - 1, x_len), dtype=float)
+        for t in range(t_len - 1):
+            for i in range(x_len):
+                difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
+        return difference
+
+    def pixel_boxcar(self, x=3, t=None, mode='valid'):
+        if x is not None and t is None:
+            if x <= 0:
+                raise Exception("Keyword argument 'x' must be greater than zero.")
+            if x % 2 != 1:
+                raise Exception("Keyword argument 'x' must be an odd integer.")
+            dx = int((x - 1) / 2.)
+            smooth_curve_ds = self.curve_ds[dx:-dx]
+            smooth_data = np.empty((self.frame_n, self.curve_len - x + 1))
+            for f in range(self.frame_n):
+                smooth_data[f] = np.convolve(self.intensity[f], np.ones(x)/float(x), mode)
+            return smooth_data, smooth_curve_ds
+        elif x is None and t is not None:
+            raise NotImplemented
+        elif x is not None and t is not None:
+            raise NotImplemented
+        else:
+            raise NotImplemented
+
     def peek(self, norm='log'):
         plt.pcolormesh(
             self.time, [ds.value for ds in self.curve_ds], self.intensity.T,
@@ -53,29 +82,6 @@ class GenericSlice(ABC):
             cmap=self.colormap, norm=norm
         )
         plt.show()
-
-    @staticmethod
-    def running_difference(xt_arr):
-        t_len = len(xt_arr)
-        x_len = len(xt_arr[0])
-        difference = np.empty((t_len - 1, x_len), dtype=float)
-        for t in range(t_len - 1):
-            for i in range(x_len):
-                difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
-        return difference
-
-    def pixel_boxcar(self, x=3, t=None, mode='valid'):
-        if x <= 0:
-            raise Exception("Keyword argument 'x' must be greater than zero.")
-        if x % 2 != 1:
-            raise Exception("Keyword argument 'x' must be an odd integer.")
-        dx = int((x - 1) / 2.)
-        smooth_curve_ds = self.curve_ds[dx:-dx]
-        smooth_data = np.empty((self.frame_n, self.curve_len - x + 1))
-        for f in range(self.frame_n):
-            smooth_data[f] = np.convolve(self.intensity[f], np.ones(x)/float(x), mode)
-
-        return smooth_data, smooth_curve_ds
 
 
 class PointsSlice(GenericSlice):
