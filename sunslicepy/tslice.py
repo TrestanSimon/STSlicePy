@@ -50,17 +50,15 @@ class GenericSlice(ABC):
                 difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
         return difference
 
-    def pixel_boxcar(self, x=3, t=None, mode='valid'):
+    def pixel_boxcar(self, x=3, t=None):
         if x is not None and t is None:
-            if x <= 0:
-                raise Exception("Keyword argument 'x' must be greater than zero.")
-            if x % 2 != 1:
-                raise Exception("Keyword argument 'x' must be an odd integer.")
+            if x <= 1 or x % 2 != 1:
+                raise Exception("Keyword argument 'x' must be an odd integer greater than 1.")
             dx = int((x - 1) / 2.)
             smooth_curve_ds = self.curve_ds[dx:-dx]
             smooth_data = np.empty((self.frame_n, self.curve_len - x + 1))
             for f in range(self.frame_n):
-                smooth_data[f] = np.convolve(self.intensity[f], np.ones(x)/float(x), mode)
+                smooth_data[f] = np.convolve(self.intensity[f], np.ones(x) / float(x), 'valid')
             return smooth_data, smooth_curve_ds
         elif x is None and t is not None:
             raise NotImplemented
@@ -109,8 +107,9 @@ class PointsSlice(GenericSlice):
         return curve_ds
 
 
-class LineSlice(GenericSlice):
-    def _get_slice(self, curve_skycoords) -> (np.ndarray, np.ndarray):
+class BreSlice(GenericSlice):
+    """Slice using Bresenham's line algorithm"""
+    def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
         curve_px = None
@@ -174,8 +173,8 @@ class LineSlice(GenericSlice):
         return curve_ds
 
 
-class BreSlice(GenericSlice):
-    """Slice using Bresenham's line algorithm"""
+class DDASlice(GenericSlice):
+    """Slice using DDA line algorithm"""
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
@@ -192,42 +191,25 @@ class BreSlice(GenericSlice):
 
             x0, y0 = coords[0]
             x1, y1 = coords[1]
-            dx = abs(x1 - x0)
-            dy = abs(y1 - y0)
+            dx = x1 - x0
+            dy = y1 - y0
+            steps = max(abs(dx), abs(dy))
+            dxi = dx / steps
+            dyi = dy / steps
+            curve_len = steps + 1
 
-            reciprocal = False
-            if dy > dx:
-                reciprocal = True
-                dx, dy = dy, dx
-                x0, y0 = y0, x0
-                x1, y1 = y1, x1
+            xi, yi = float(x0), float(y0)
+            x = np.array([xi + i * dxi for i in range(curve_len)])
+            y = np.array([yi + i * dyi for i in range(curve_len)])
 
-            D = 2*dy - dx
-            x = np.empty(dx + 1, dtype=int)
-            y = np.empty(dx + 1, dtype=int)
-            xi, yi = x0, y0
-            for i in range(dx):
-                if D > 0:
-                    yi += 1 if yi < y1 else -1
-                    D += 2*(dy - dx)
-                else:
-                    D += 2*dy
-                xi += 1 if xi < x1 else -1
-                x[i], y[i] = xi, yi
-
-            x[-1] = x1
-            y[-1] = y1
-
-            if reciprocal:
-                x, y = y, x
             if curve_px is None:
-                curve_px = np.empty((self.frame_n, dx + 1, 2), dtype=int)
+                curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
             if intensity is None:
-                intensity = np.empty((self.frame_n, dx + 1), dtype=float)
+                intensity = np.empty((self.frame_n, curve_len), dtype=float)
 
-            for i in range(dx + 1):
-                curve_px[f][i] = y[i], x[i]
-                intensity[f][i] = intensity_cube[f][y[i]][x[i]]
+            for i in range(curve_len):
+                curve_px[f][i] = int(y[i]), int(x[i])
+                intensity[f][i] = intensity_cube[f][int(y[i])][int(x[i])]
         return curve_px, intensity
 
     def _get_curve_ds(self, curve_skycoords):
