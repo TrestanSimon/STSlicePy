@@ -7,6 +7,7 @@ from matplotlib import colors
 from sunpy.coordinates import Helioprojective
 from sunpy.map import MapSequence
 from tqdm import tqdm
+from sunslicepy.rasterize import bresenham_line, dda_line
 
 
 class GenericSlice(ABC):
@@ -125,42 +126,16 @@ class BreSlice(GenericSlice):
 
             x0, y0 = coords[0]
             x1, y1 = coords[1]
-            dx = abs(x1 - x0)
-            dy = abs(y1 - y0)
-
-            reciprocal = False
-            if dy > dx:
-                reciprocal = True
-                dx, dy = dy, dx
-                x0, y0 = y0, x0
-                x1, y1 = y1, x1
-
-            D = 2*dy - dx
-            x = np.empty(dx + 1, dtype=int)
-            y = np.empty(dx + 1, dtype=int)
-            xi, yi = x0, y0
-            for i in range(dx):
-                if D > 0:
-                    yi += 1 if yi < y1 else -1
-                    D += 2*(dy - dx)
-                else:
-                    D += 2*dy
-                xi += 1 if xi < x1 else -1
-                x[i], y[i] = xi, yi
-
-            x[-1] = x1
-            y[-1] = y1
-
-            if reciprocal:
-                x, y = y, x
+            curve_px_i = bresenham_line(x0, y0, x1, y1)
+            curve_len = len(curve_px_i)
             if curve_px is None:
-                curve_px = np.empty((self.frame_n, dx + 1, 2), dtype=int)
+                curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
             if intensity is None:
-                intensity = np.empty((self.frame_n, dx + 1), dtype=float)
+                intensity = np.empty((self.frame_n, curve_len), dtype=float)
 
-            for i in range(dx + 1):
-                curve_px[f][i] = y[i], x[i]
-                intensity[f][i] = intensity_cube[f][y[i]][x[i]]
+            for i in range(curve_len):
+                curve_px[f][i] = curve_px_i[i][1], curve_px_i[i][0]
+                intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
         return curve_px, intensity
 
     def _get_curve_ds(self, curve_skycoords):
@@ -191,16 +166,8 @@ class DDASlice(GenericSlice):
 
             x0, y0 = coords[0]
             x1, y1 = coords[1]
-            dx = x1 - x0
-            dy = y1 - y0
-            steps = max(abs(dx), abs(dy))
-            dxi = dx / steps
-            dyi = dy / steps
-            curve_len = steps + 1
-
-            xi, yi = float(x0), float(y0)
-            x = np.array([xi + i * dxi for i in range(curve_len)])
-            y = np.array([yi + i * dyi for i in range(curve_len)])
+            curve_px_i = dda_line(x0, y0, x1, y1)
+            curve_len = len(curve_px_i)
 
             if curve_px is None:
                 curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
@@ -208,8 +175,8 @@ class DDASlice(GenericSlice):
                 intensity = np.empty((self.frame_n, curve_len), dtype=float)
 
             for i in range(curve_len):
-                curve_px[f][i] = int(y[i]), int(x[i])
-                intensity[f][i] = intensity_cube[f][int(y[i])][int(x[i])]
+                curve_px[f][i] = curve_px_i[i][1], curve_px_i[i][0]
+                intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
         return curve_px, intensity
 
     def _get_curve_ds(self, curve_skycoords):
