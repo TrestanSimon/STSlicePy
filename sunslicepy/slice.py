@@ -27,12 +27,16 @@ class GenericSlice(ABC):
 
         # Necessary when points are not on disk
         with Helioprojective.assume_spherical_screen(
-                center=skycoords_input[0].observer,
+                center=self._get_observer(skycoords_input),
                 only_off_disk=True
         ):
             self.curve_px, self.intensity = self._get_slice(skycoords_input)
             self.curve_len = len(self.curve_px[0])
             self.curve_ds = self._get_curve_ds(skycoords_input)
+
+    @abstractmethod
+    def _get_observer(self, skycoords_input):
+        """"""
 
     @abstractmethod
     def _get_slice(self, curve_skycoords) -> (np.ndarray, np.ndarray):
@@ -92,6 +96,9 @@ class GenericSlice(ABC):
 
 
 class PointsSlice(GenericSlice):
+    def _get_observer(self, skycoords_input):
+        return skycoords_input[0].observer
+
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         curve_len = len(curve_skycoords)
@@ -118,6 +125,9 @@ class PointsSlice(GenericSlice):
 
 class BreSlice(GenericSlice):
     """Slice using Bresenham's line algorithm"""
+    def _get_observer(self, skycoords_input):
+        return skycoords_input[0].observer
+
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
@@ -158,6 +168,9 @@ class BreSlice(GenericSlice):
 
 class DDASlice(GenericSlice):
     """Slice using DDA line algorithm"""
+    def _get_observer(self, skycoords_input):
+        return skycoords_input[0].observer
+
     def _get_slice(self, curve_skycoords):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
@@ -201,6 +214,9 @@ class CustomSlice(GenericSlice):
     def __init__(self, seq_input, skycoords_input, func: object):
         self.func = func
         super().__init__(seq_input, skycoords_input)
+
+    def _get_observer(self, skycoords_input):
+        return skycoords_input[0].observer
 
     def _get_slice(self, curve_skycoords) -> (np.ndarray, np.ndarray):
         raise NotImplemented
