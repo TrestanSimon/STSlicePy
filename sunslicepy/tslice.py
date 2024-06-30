@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
+from scipy.ndimage import convolve
 from matplotlib import colors
 from sunpy.coordinates import Helioprojective
 from sunpy.map import MapSequence
@@ -51,7 +52,7 @@ class GenericSlice(ABC):
                 difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
         return difference
 
-    def pixel_boxcar(self, x=3, t=None):
+    def pixel_boxcar(self, x=3, t=None) -> (np.ndarray, np.ndarray, np.ndarray):
         if x is not None and t is None:
             if x <= 1 or x % 2 != 1:
                 raise Exception("Keyword argument 'x' must be an odd integer greater than 1.")
@@ -60,11 +61,18 @@ class GenericSlice(ABC):
             smooth_data = np.empty((self.frame_n, self.curve_len - x + 1))
             for f in range(self.frame_n):
                 smooth_data[f] = np.convolve(self.intensity[f], np.ones(x) / float(x), 'valid')
-            return smooth_data, smooth_curve_ds
+            return smooth_data, self.time, smooth_curve_ds
         elif x is None and t is not None:
             raise NotImplemented
         elif x is not None and t is not None:
-            raise NotImplemented
+            if x <= 1 or x % 2 != 1:
+                raise Exception("Keyword argument 'x' must be an odd integer greater than 1.")
+            dx = int((x - 1) / 2.)
+            dt = int((t - 1) / 2.)
+            smooth_curve_ds = self.curve_ds  # [dx:-dx]
+            smooth_time = self.time  # [dt:-dt]
+            smooth_data = convolve(self.intensity, np.ones((t, x)) / float(t * x))  # [dt:-dt][dx:-dx]
+            return smooth_data, smooth_time, smooth_curve_ds
         else:
             raise NotImplemented
 
