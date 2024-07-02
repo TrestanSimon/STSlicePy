@@ -47,13 +47,13 @@ class GenericSlice(ABC):
     @abstractmethod
     def _get_slice(self) -> (np.ndarray, np.ndarray):
         """
-        return:
+        :return:
             curve_px
             intensity
         """
 
     @abstractmethod
-    def _get_curve_ds(self) -> np.ndarray[u.Quantity]:
+    def _get_curve_ds(self) -> np.ndarray:
         """"""
 
     def pixel_boxcar(self, x=3, t=None) -> (np.ndarray, np.ndarray, np.ndarray):
@@ -209,8 +209,8 @@ class DDASlice(GenericSlice):
         curve_ds[0] = 0 * u.arcsec
 
         intensity_coords = self.map_sequence[0].pixel_to_world(*(self.curve_px[0].T * u.pix))
-        for i in range(self.curve_len - 1):
-            curve_ds[i + 1] = curve_ds[i] + intensity_coords[i + 1].separation(intensity_coords[i])
+        for i in range(self.curve_len-1):
+            curve_ds[i+1] = curve_ds[i] + intensity_coords[i+1].separation(intensity_coords[i])
         return curve_ds
 
 
@@ -229,11 +229,10 @@ class CustomSlice(GenericSlice):
         raise NotImplemented
 
 
-def running_difference(xt_arr):
-    t_len = len(xt_arr)
-    x_len = len(xt_arr[0])
-    difference = np.empty((t_len - 1, x_len), dtype=float)
-    for t in range(t_len - 1):
+def running_difference(time_space_arr: np.ndarray) -> np.ndarray:
+    t_len, x_len = time_space_arr.shape
+    difference = np.empty((t_len-1, x_len), dtype=float)
+    for t in range(t_len-1):
         for i in range(x_len):
-            difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
+            difference[t][i] = time_space_arr[t+1][i] - time_space_arr[t][i]
     return difference

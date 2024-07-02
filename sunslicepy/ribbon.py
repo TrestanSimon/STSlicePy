@@ -31,6 +31,6 @@ class PointsRibbon(GenericSlice):
     def _get_curve_ds(self) -> np.ndarray[u.Quantity]:
         curve_ds = np.empty(self.curve_len, dtype=u.Quantity)
         curve_ds[0] = 0 * u.arcsec
-        for i in range(self.curve_len - 1):
-            curve_ds[i + 1] = curve_ds[i] + self.skycoords_input[i + 1][0].separation(self.skycoords_input[i][0])
+        for i in range(self.curve_len-1):
+            curve_ds[i+1] = curve_ds[i] + self.skycoords_input[i+1][0].separation(self.skycoords_input[i][0])
         return curve_ds
