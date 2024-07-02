@@ -4,3 +4,4 @@ astropy~=5.3.3
 sunpy~=5.0.0
 numpy~=1.25.2
 tqdm~=4.66.1
+scipy~=1.11.2

@@ -14,47 +14,47 @@ from sunslicepy.rasterize import bresenham_line, dda_line
 class GenericSlice(ABC):
     def __init__(
             self,
-            seq_input: MapSequence,
-            skycoords_input: list[SkyCoord] or np.ndarray[SkyCoord],
+            sequence_input: MapSequence,
+            skycoords_input: SkyCoord,
     ):
-        self.map_sequence = seq_input
+        if not isinstance(sequence_input, MapSequence):
+            raise Exception("sequence_input must be of type MapSequence.")
+        if not isinstance(skycoords_input, SkyCoord):
+            raise Exception("skycoords_input must be of type SkyCoords.")
+
+        self.map_sequence = sequence_input
+        self.skycoords_input = skycoords_input
+
         self.map_sequence.all_maps_same_shape()
         self.frame_n = len(self.map_sequence)
         self.time = [smap.date.datetime for smap in self.map_sequence]
-
-        self.spatial_units = self.map_sequence[0].spatial_units
-        self.colormap = self.map_sequence[0].cmap
+        self.cmap = self.map_sequence[0].cmap
 
         # Necessary when points are not on disk
         with Helioprojective.assume_spherical_screen(
-                center=self._get_observer(skycoords_input),
+                center=self.observer(),
                 only_off_disk=True
         ):
-            self.curve_px, self.intensity = self._get_slice(skycoords_input)
+            self.curve_px, self.intensity = self._get_slice()
             self.curve_len = len(self.curve_px[0])
-            self.curve_ds = self._get_curve_ds(skycoords_input)
+            self.curve_ds = self._get_curve_ds()
 
+    @property
     @abstractmethod
-    def _get_observer(self, skycoords_input):
+    def observer(self):
         """"""
 
     @abstractmethod
-    def _get_slice(self, curve_skycoords) -> (np.ndarray, np.ndarray):
-        """"""
+    def _get_slice(self) -> (np.ndarray, np.ndarray):
+        """
+        return:
+            curve_px
+            intensity
+        """
 
     @abstractmethod
-    def _get_curve_ds(self, curve_skycoords) -> np.ndarray[u.Quantity]:
+    def _get_curve_ds(self) -> np.ndarray[u.Quantity]:
         """"""
-
-    @staticmethod
-    def running_difference(xt_arr):
-        t_len = len(xt_arr)
-        x_len = len(xt_arr[0])
-        difference = np.empty((t_len - 1, x_len), dtype=float)
-        for t in range(t_len - 1):
-            for i in range(x_len):
-                difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
-        return difference
 
     def pixel_boxcar(self, x=3, t=None) -> (np.ndarray, np.ndarray, np.ndarray):
         if x is not None and t is None:
@@ -71,8 +71,8 @@ class GenericSlice(ABC):
         elif x is not None and t is not None:
             if x <= 1 or x % 2 != 1:
                 raise Exception("Keyword argument 'x' must be an odd integer greater than 1.")
-            dx = int((x - 1) / 2.)
-            dt = int((t - 1) / 2.)
+            # dx = int((x - 1) / 2.)
+            # dt = int((t - 1) / 2.)
             smooth_curve_ds = self.curve_ds  # [dx:-dx]
             smooth_time = self.time  # [dt:-dt]
             smooth_data = convolve(self.intensity, np.ones((t, x)) / float(t * x))  # [dt:-dt][dx:-dx]
@@ -82,31 +82,35 @@ class GenericSlice(ABC):
 
     def peek(self, norm='log'):
         plt.pcolormesh(
-            self.time, [ds.value for ds in self.curve_ds], self.intensity.T,
-            cmap=self.colormap, norm=norm
+            self.time,
+            [ds.value for ds in self.curve_ds],
+            self.intensity.T,
+            cmap=self.cmap, norm=norm
         )
         plt.show()
 
     def peek_running_difference(self, norm=colors.Normalize(vmin=-200, vmax=200)):
         plt.pcolormesh(
-            self.time[1:], [ds.value for ds in self.curve_ds], self.running_difference(self.intensity).T,
-            cmap=self.colormap, norm=norm
+            self.time[1:],
+            [ds.value for ds in self.curve_ds],
+            running_difference(self.intensity).T,
+            cmap=self.cmap, norm=norm
         )
         plt.show()
 
 
 class PointsSlice(GenericSlice):
-    def _get_observer(self, skycoords_input):
-        return skycoords_input[0].observer
+    def observer(self):
+        return self.skycoords_input[0].observer
 
-    def _get_slice(self, curve_skycoords):
+    def _get_slice(self):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
-        curve_len = len(curve_skycoords)
+        curve_len = len(self.skycoords_input)
         curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
         intensity = np.empty((self.frame_n, curve_len), dtype=float)
 
         for f in tqdm(range(self.frame_n), unit='frames'):
-            xf, yf = self.map_sequence[f].world_to_pixel(curve_skycoords)
+            xf, yf = self.map_sequence[f].world_to_pixel(self.skycoords_input)
             xf, yf = np.round(xf), np.round(yf)
             for i in range(curve_len):
                 xi, yi = int(xf[i].value), int(yf[i].value)
@@ -115,27 +119,27 @@ class PointsSlice(GenericSlice):
 
         return curve_px, intensity
 
-    def _get_curve_ds(self, curve_skycoords):
+    def _get_curve_ds(self):
         curve_ds = np.empty(self.curve_len, dtype=u.Quantity)
         curve_ds[0] = 0 * u.arcsec
         for i in range(self.curve_len - 1):
-            curve_ds[i + 1] = curve_ds[i] + curve_skycoords[i + 1].separation(curve_skycoords[i])
+            curve_ds[i + 1] = curve_ds[i] + self.skycoords_input[i + 1].separation(self.skycoords_input[i])
         return curve_ds
 
 
-class BreSlice(GenericSlice):
+class BresenhamSlice(GenericSlice):
     """Slice using Bresenham's line algorithm"""
-    def _get_observer(self, skycoords_input):
-        return skycoords_input[0].observer
+    def observer(self):
+        return self.skycoords_input[0].observer
 
-    def _get_slice(self, curve_skycoords):
+    def _get_slice(self):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
         curve_px = None
-        coords_n = len(curve_skycoords)  # 2
+        coords_n = len(self.skycoords_input)  # 2
 
         for f in tqdm(range(self.frame_n), unit='frames'):
-            xp, yp = self.map_sequence[f].world_to_pixel(curve_skycoords)
+            xp, yp = self.map_sequence[f].world_to_pixel(self.skycoords_input)
             coords = np.abs(np.array([
                 [int(xi.value) for xi in xp],
                 [int(yi.value) for yi in yp]]).T)
@@ -156,7 +160,7 @@ class BreSlice(GenericSlice):
                 intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
         return curve_px, intensity
 
-    def _get_curve_ds(self, curve_skycoords):
+    def _get_curve_ds(self):
         curve_ds = np.empty(self.curve_len, dtype=u.Quantity)
         curve_ds[0] = 0 * u.arcsec
 
@@ -168,17 +172,17 @@ class BreSlice(GenericSlice):
 
 class DDASlice(GenericSlice):
     """Slice using DDA line algorithm"""
-    def _get_observer(self, skycoords_input):
-        return skycoords_input[0].observer
+    def observer(self):
+        return self.skycoords_input[0].observer
 
-    def _get_slice(self, curve_skycoords):
+    def _get_slice(self):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
         curve_px = None
-        coords_n = len(curve_skycoords)  # 2
+        coords_n = len(self.skycoords_input)  # 2
 
         for f in tqdm(range(self.frame_n), unit='frames'):
-            xp, yp = self.map_sequence[f].world_to_pixel(curve_skycoords)
+            xp, yp = self.map_sequence[f].world_to_pixel(self.skycoords_input)
             coords = np.abs(np.array([
                 [int(xi.value) for xi in xp],
                 [int(yi.value) for yi in yp]]).T)
@@ -200,7 +204,7 @@ class DDASlice(GenericSlice):
                 intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
         return curve_px, intensity
 
-    def _get_curve_ds(self, curve_skycoords):
+    def _get_curve_ds(self):
         curve_ds = np.empty(self.curve_len, dtype=u.Quantity)
         curve_ds[0] = 0 * u.arcsec
 
@@ -211,15 +215,25 @@ class DDASlice(GenericSlice):
 
 
 class CustomSlice(GenericSlice):
-    def __init__(self, seq_input, skycoords_input, func: object):
+    def __init__(self, sequence_input, skycoords_input, func: object):
         self.func = func
-        super().__init__(seq_input, skycoords_input)
+        super().__init__(sequence_input, skycoords_input)
 
-    def _get_observer(self, skycoords_input):
-        return skycoords_input[0].observer
+    def observer(self):
+        return self.skycoords_input[0].observer
 
-    def _get_slice(self, curve_skycoords) -> (np.ndarray, np.ndarray):
+    def _get_slice(self) -> (np.ndarray, np.ndarray):
         raise NotImplemented
 
-    def _get_curve_ds(self, curve_skycoords) -> np.ndarray[u.Quantity]:
+    def _get_curve_ds(self) -> np.ndarray[u.Quantity]:
         raise NotImplemented
+
+
+def running_difference(xt_arr):
+    t_len = len(xt_arr)
+    x_len = len(xt_arr[0])
+    difference = np.empty((t_len - 1, x_len), dtype=float)
+    for t in range(t_len - 1):
+        for i in range(x_len):
+            difference[t][i] = xt_arr[t + 1][i] - xt_arr[t][i]
+    return difference
