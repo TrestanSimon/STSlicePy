@@ -1,6 +1,28 @@
 import numpy as np
 
 
+def naive_line(x0, y0, x1, y1) -> np.ndarray:
+    dx = x1 - x0
+    dy = y1 - y0
+    dxi = np.sign(dx)
+    dyi = np.sign(dy)
+    curve_len = abs(dx) + abs(dy)
+    curve_px = np.empty((curve_len, 2), dtype=int)
+
+    tx = (1 - (abs(x0) - int(abs(x0)))) / abs(dx)
+    ty = (1 - (abs(y0) - int(abs(y0)))) / abs(dy)
+    xi, yi = x0, y0
+    for i in range(curve_len):
+        if abs(tx) < abs(ty):
+            tx += abs(1 / dx)
+            xi += dxi
+        else:
+            ty += abs(1 / dy)
+            yi += dyi
+        curve_px[i] = xi, yi
+    return curve_px
+
+
 def bresenham_line(x0, y0, x1, y1) -> np.ndarray:
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
