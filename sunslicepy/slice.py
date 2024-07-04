@@ -105,8 +105,16 @@ class PointsSlice(GenericSlice):
         return curve_ds
 
 
-class BresenhamSlice(GenericSlice):
-    """Slice using Bresenham's line algorithm"""
+class TwoPointSlice(GenericSlice):
+
+    def __init__(
+            self,
+            sequence_input: sunpy.map.MapSequence,
+            skycoords_input: SkyCoord,
+            func,
+    ):
+        self._func = func
+        super().__init__(sequence_input, skycoords_input)
 
     def observer(self):
         return self.skycoords_input[0].observer
@@ -127,53 +135,8 @@ class BresenhamSlice(GenericSlice):
 
             x0, y0 = coords[0]
             x1, y1 = coords[1]
-            curve_px_i = bresenham_line(x0, y0, x1, y1)
+            curve_px_i = self._func(x0, y0, x1, y1)
             curve_len = len(curve_px_i)
-            if curve_px is None:
-                curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
-            if intensity is None:
-                intensity = np.empty((self.frame_n, curve_len), dtype=float)
-
-            for i in range(curve_len):
-                curve_px[f][i] = curve_px_i[i][1], curve_px_i[i][0]
-                intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
-        return curve_px, intensity
-
-    def _get_curve_ds(self):
-        curve_ds = np.empty(self.curve_len, dtype=u.Quantity)
-        curve_ds[0] = 0 * u.arcsec
-
-        intensity_coords = self.map_sequence[0].pixel_to_world(*(self.curve_px[0].T * u.pix))
-        for i in range(self.curve_len - 1):
-            curve_ds[i + 1] = curve_ds[i] + intensity_coords[i + 1].separation(intensity_coords[i])
-        return curve_ds
-
-
-class DDASlice(GenericSlice):
-    """Slice using DDA line algorithm"""
-
-    def observer(self):
-        return self.skycoords_input[0].observer
-
-    def _get_slice(self):
-        intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
-        intensity = None
-        curve_px = None
-        coords_n = len(self.skycoords_input)  # 2
-
-        for f in tqdm.tqdm(range(self.frame_n), unit='frames'):
-            xp, yp = self.map_sequence[f].world_to_pixel(self.skycoords_input)
-            coords = np.abs(np.array([
-                [int(xi.value) for xi in xp],
-                [int(yi.value) for yi in yp]]).T)
-            for i in range(coords_n):
-                coords[i] = int(np.round(coords[i][0])), int(np.round(coords[i][1]))
-
-            x0, y0 = coords[0]
-            x1, y1 = coords[1]
-            curve_px_i = dda_line(x0, y0, x1, y1)
-            curve_len = len(curve_px_i)
-
             if curve_px is None:
                 curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
             if intensity is None:
