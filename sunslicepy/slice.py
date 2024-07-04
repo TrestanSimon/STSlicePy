@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sunpy
 import sunslicepy.processing
-from sunslicepy.rasterize import bresenham_line, dda_line
 import tqdm
 
 
@@ -105,15 +104,17 @@ class PointsSlice(GenericSlice):
         return curve_ds
 
 
-class TwoPointSlice(GenericSlice):
+class BetweenPointsSlice(GenericSlice):
 
     def __init__(
             self,
             sequence_input: sunpy.map.MapSequence,
             skycoords_input: SkyCoord,
             func,
+            **kwargs,
     ):
         self._func = func
+        self._func_kwargs = kwargs
         super().__init__(sequence_input, skycoords_input)
 
     def observer(self):
@@ -123,7 +124,7 @@ class TwoPointSlice(GenericSlice):
         intensity_cube = np.array([map_s.data for map_s in self.map_sequence])
         intensity = None
         curve_px = None
-        coords_n = len(self.skycoords_input)  # 2
+        coords_n = len(self.skycoords_input)
 
         for f in tqdm.tqdm(range(self.frame_n), unit='frames'):
             xp, yp = self.map_sequence[f].world_to_pixel(self.skycoords_input)
@@ -133,10 +134,17 @@ class TwoPointSlice(GenericSlice):
             for i in range(coords_n):
                 coords[i] = int(np.round(coords[i][0])), int(np.round(coords[i][1]))
 
-            x0, y0 = coords[0]
-            x1, y1 = coords[1]
-            curve_px_i = self._func(x0, y0, x1, y1)
+            curve_px_i = None
+            for i in range(coords_n-1):
+                x0, y0 = coords[i]
+                x1, y1 = coords[i+1]
+                func_return = self._func(x0, y0, x1, y1, **self._func_kwargs)
+                if curve_px_i is None:
+                    curve_px_i = func_return
+                else:
+                    curve_px_i = np.append(curve_px_i, func_return, axis=0)
             curve_len = len(curve_px_i)
+
             if curve_px is None:
                 curve_px = np.empty((self.frame_n, curve_len, 2), dtype=int)
             if intensity is None:
