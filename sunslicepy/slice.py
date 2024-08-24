@@ -31,7 +31,7 @@ class GenericSlice(ABC):
         self.cmap = self.map_sequence[0].cmap
 
         # Necessary when points are not on disk
-        with sunpy.coordinates.Helioprojective.assume_spherical_screen(
+        with sunpy.coordinates.screens.SphericalScreen(
                 center=self.observer(),
                 only_off_disk=True):
             self.curve_px, self.intensity = self._get_slice()
