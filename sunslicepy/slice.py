@@ -7,6 +7,7 @@ import numpy as np
 import sunpy
 import sunslicepy.processing
 import tqdm
+import warnings
 
 
 class GenericSlice(ABC):
@@ -129,10 +130,10 @@ class BetweenPointsSlice(GenericSlice):
         for f in tqdm.tqdm(range(self.frame_n), unit='frames'):
             xp, yp = self.map_sequence[f].world_to_pixel(self.skycoords_input)
             coords = np.abs(np.array([
-                [int(xi.value) for xi in xp],
-                [int(yi.value) for yi in yp]]).T)
+                [int(np.round(xi.value)) for xi in xp],
+                [int(np.round(yi.value)) for yi in yp]]).T)
             for i in range(coords_n):
-                coords[i] = int(np.round(coords[i][0])), int(np.round(coords[i][1]))
+                coords[i] = coords[i][0], coords[i][1]
 
             curve_px_i = None
             for i in range(coords_n-1):
@@ -151,8 +152,12 @@ class BetweenPointsSlice(GenericSlice):
                 intensity = np.empty((self.frame_n, curve_len), dtype=float)
 
             for i in range(curve_len):
-                curve_px[f][i] = curve_px_i[i][1], curve_px_i[i][0]
-                intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
+                try:
+                    curve_px[f][i] = curve_px_i[i][1], curve_px_i[i][0]
+                    intensity[f][i] = intensity_cube[f][curve_px_i[i][1]][curve_px_i[i][0]]
+                except IndexError:
+                    warnings.warn("The number of pixels between the specified SkyCoords is not constant."
+                                  "Pixels in excess of the original number will not be stored.")
         return curve_px, intensity
 
     def _get_curve_ds(self):
